@@ -1,0 +1,54 @@
+name: Build FrostOS ISO
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md"]
+  pull_request:
+  workflow_dispatch: # adds a "Run workflow" button in the Actions tab
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+
+    steps:
+      - name: Get the FrostOS code
+        uses: actions/checkout@v4
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h
+
+      - name: Build the ISO inside an Arch Linux container
+        run: |
+          sudo mkdir -p /mnt/frost-work /mnt/frost-out
+          docker run --rm --privileged \
+            -v "$GITHUB_WORKSPACE:/build:ro" \
+            -v /mnt/frost-work:/work \
+            -v /mnt/frost-out:/out \
+            -e WORK_DIR=/work -e OUT_DIR=/out \
+            archlinux:latest \
+            bash /build/scripts/build-iso.sh
+
+      - name: Show the result
+        run: ls -lhR /mnt/frost-out
+
+      - name: Upload artwork previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frostos-previews
+          path: /mnt/frost-out/previews/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload the ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: frostos-iso
+          path: /mnt/frost-out/*.iso
+          compression-level: 0 # ISOs are already compressed
+          retention-days: 14
+          if-no-files-found: error

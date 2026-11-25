@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <!-- FrostOS default wallpaper (dark). Original artwork for FrostOS. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#081321"/><stop offset="0.6" stop-color="#11243A"/><stop offset="1" stop-color="#172B40"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="1460" cy="330" r="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#55AFFF" stop-opacity="0.22"/><stop offset="1" stop-color="#55AFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="front" x1="0" y1="900" x2="0" y2="1080" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22405F"/><stop offset="1" stop-color="#1A3149"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="55"/></filter>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <path d="M-100 380 C300 250 700 420 1100 300 S1700 180 2050 320" fill="none" stroke="#55AFFF" stroke-opacity="0.35" stroke-width="130" filter="url(#soft)"/>
+  <path d="M-100 300 C400 200 800 330 1200 230 S1700 140 2050 240" fill="none" stroke="#8CCFFF" stroke-opacity="0.18" stroke-width="80" filter="url(#soft)"/>
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+  <g fill="#FFFFFF">
+    <circle cx="120" cy="90" r="1.6" opacity="0.7"/><circle cx="420" cy="160" r="1.2" opacity="0.5"/><circle cx="640" cy="70" r="1.8" opacity="0.6"/>
+    <circle cx="860" cy="210" r="1.2" opacity="0.5"/><circle cx="1110" cy="110" r="1.6" opacity="0.7"/><circle cx="1760" cy="90" r="1.4" opacity="0.6"/>
+    <circle cx="1840" cy="260" r="1.2" opacity="0.5"/><circle cx="260" cy="330" r="1.2" opacity="0.4"/><circle cx="1010" cy="380" r="1.4" opacity="0.4"/>
+    <circle cx="1680" cy="420" r="1.2" opacity="0.4"/><circle cx="540" cy="260" r="1.0" opacity="0.5"/><circle cx="1260" cy="60" r="1.2" opacity="0.6"/>
+  </g>
+  <g transform="translate(1460 330) scale(2.3) translate(-128 -128)" fill="none" stroke="#8CCFFF" stroke-opacity="0.45" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="rotate(0 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+    <g transform="rotate(60 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+    <g transform="rotate(120 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+    <g transform="rotate(180 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+    <g transform="rotate(240 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+    <g transform="rotate(300 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+  </g>
+  <g transform="translate(300 220) scale(0.45) translate(-128 -128)" fill="none" stroke="#8CCFFF" stroke-opacity="0.35" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="rotate(0 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+    <g transform="rotate(60 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+    <g transform="rotate(120 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+    <g transform="rotate(180 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+    <g transform="rotate(240 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+    <g transform="rotate(300 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+  </g>
+  <g transform="translate(980 150) scale(0.3) translate(-128 -128)" fill="none" stroke="#8CCFFF" stroke-opacity="0.3" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="rotate(0 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+    <g transform="rotate(60 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+    <g transform="rotate(120 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+    <g transform="rotate(180 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+    <g transform="rotate(240 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+    <g transform="rotate(300 128 128)"><path d="M128 128V26M128 62L101 35M128 62L155 35M128 96L109 77M128 96L147 77"/></g>
+  </g>
+  <path d="M0 720 L170 610 L300 662 L510 520 L690 640 L860 566 L1030 652 L1240 498 L1420 622 L1600 560 L1780 640 L1920 594 V1080 H0Z" fill="#152B43"/>
+  <path d="M510 520 L548 600 L512 586 L470 560Z M1240 498 L1286 590 L1244 574 L1196 534Z M170 610 L200 650 L168 642 L140 628Z M1600 560 L1630 610 L1598 600 L1572 580Z" fill="#8CCFFF" fill-opacity="0.18"/>
+  <path d="M0 830 L210 708 L400 786 L620 676 L820 800 L1020 724 L1220 822 L1450 698 L1660 792 L1920 724 V1080 H0Z" fill="#1B3551"/>
+  <path d="M620 676 L664 752 L624 742 L584 708Z M1450 698 L1496 776 L1454 764 L1410 728Z M210 708 L246 760 L210 750 L178 728Z" fill="#8CCFFF" fill-opacity="0.18"/>
+  <path d="M0 950 C300 890 520 905 770 945 S1300 1005 1560 935 S1830 905 1920 925 V1080 H0Z" fill="url(#front)"/>
+</svg>

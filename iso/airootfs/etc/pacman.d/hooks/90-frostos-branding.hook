@@ -1,0 +1,17 @@
+# Re-applies FrostOS branding whenever pacman installs, updates or removes
+# one of these files (for example when the "filesystem" package is updated).
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Target = usr/lib/os-release
+Target = usr/share/applications/org.kde.dolphin.desktop
+Target = usr/share/applications/org.kde.konsole.desktop
+Target = usr/share/applications/systemsettings.desktop
+Target = usr/share/applications/org.kde.discover.desktop
+
+[Action]
+Description = Applying FrostOS branding...
+When = PostTransaction
+Exec = /bin/sh /usr/share/frostos/frostos-branding

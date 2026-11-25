@@ -1,0 +1,79 @@
+# Packages FrostOS adds on top of Arch's releng package list (the official Arch ISO).
+# One package per line. Lines starting with # are comments.
+# Packages marked (AUR) are built by scripts/build-aur.sh; see aur-packages.txt.
+
+# --- Desktop: KDE Plasma 6 on Wayland ---
+plasma-desktop
+kscreen
+plasma-nm
+plasma-pa
+bluedevil
+powerdevil
+power-profiles-daemon
+kinfocenter
+kde-gtk-config
+breeze-gtk
+xdg-desktop-portal-kde
+polkit-kde-agent
+appmenu-gtk-module
+ocean-sound-theme
+sddm
+sddm-kcm
+
+# --- Frost apps (KDE apps with FrostOS names and themes) ---
+dolphin
+konsole
+discover
+packagekit-qt6
+flatpak
+flatpak-kcm
+archlinux-appstream-data
+
+# --- Browser ---
+brave-bin                 # (AUR) official Brave package, maintained by Brave
+
+# --- Utilities ---
+kate                      # also provides KWrite, the simple text editor
+ark
+7zip
+unzip
+gwenview
+haruna
+kcalc
+kclock
+spectacle
+plasma-systemmonitor
+ffmpegthumbs
+kdegraphics-thumbnailers
+kio-extras
+
+# --- Security ---
+plasma-firewall
+ufw
+
+# --- Sound ---
+pipewire
+pipewire-alsa
+pipewire-pulse
+pipewire-jack
+wireplumber
+
+# --- Network & Bluetooth ---
+networkmanager
+bluez
+bluez-utils
+
+# --- Graphics (includes software rendering for virtual machines) ---
+mesa
+qt6-multimedia-ffmpeg
+
+# --- Fonts ---
+inter-font
+noto-fonts
+noto-fonts-emoji
+ttf-jetbrains-mono
+
+# --- System ---
+sudo
+polkit
+xdg-user-dirs

@@ -1,0 +1,13 @@
+{
+    "KPackageStructure": "Wallpaper/Images",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "FrostOS"
+            }
+        ],
+        "Id": "FrostOS",
+        "License": "CC-BY-SA-4.0",
+        "Name": "FrostOS"
+    }
+}

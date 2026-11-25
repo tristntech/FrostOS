@@ -1,0 +1,7 @@
+// Live session only: the "frost" user may do admin tasks (installing apps,
+// changing network settings, ...) without typing a password.
+polkit.addRule(function (action, subject) {
+    if (subject.user == "frost") {
+        return polkit.Result.YES;
+    }
+});

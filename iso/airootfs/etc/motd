@@ -1,0 +1,8 @@
+
+  Welcome to the FrostOS live system!
+
+  The desktop should start on its own. If you only see this text screen,
+  type:  sudo systemctl restart sddm
+
+  Help: https://github.com/tristntech/FrostOS
+

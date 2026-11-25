@@ -1,0 +1,11 @@
+[Unit]
+Description=FrostOS: add the Flathub app source to Flatpak
+After=local-fs.target
+ConditionPathExists=/usr/bin/flatpak
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/flatpak remote-add --system --if-not-exists flathub /usr/share/frostos/flathub.flatpakrepo
+
+[Install]
+WantedBy=multi-user.target

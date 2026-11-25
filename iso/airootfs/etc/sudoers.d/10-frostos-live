@@ -1,0 +1,2 @@
+# Live session only: the "frost" user can use sudo without a password.
+frost ALL=(ALL:ALL) NOPASSWD: ALL

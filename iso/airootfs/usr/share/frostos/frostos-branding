@@ -1,0 +1,52 @@
+#!/bin/sh
+# FrostOS branding, run by /etc/pacman.d/hooks/90-frostos-branding.hook.
+#
+# 1. Names the system "FrostOS" (shown in Settings > About, fastfetch, ...).
+# 2. Gives the core KDE apps their FrostOS names (Frost Files, Frost Terminal, ...).
+#    We never edit the app's own file: we write a renamed copy to
+#    /usr/local/share/applications, which the desktop prefers over /usr/share.
+#    The copy is refreshed every time the app updates and removed with the app.
+
+# --- 1. os-release ---------------------------------------------------------
+if [ -e /usr/lib/os-release ]; then
+    cat > /usr/lib/os-release <<'OSR'
+NAME="FrostOS"
+PRETTY_NAME="FrostOS"
+ID=frostos
+ID_LIKE=arch
+BUILD_ID=rolling
+ANSI_COLOR="38;2;85;175;255"
+HOME_URL="https://github.com/tristntech/FrostOS"
+DOCUMENTATION_URL="https://github.com/tristntech/FrostOS#readme"
+SUPPORT_URL="https://github.com/tristntech/FrostOS/issues"
+BUG_REPORT_URL="https://github.com/tristntech/FrostOS/issues"
+LOGO=frostos-logo
+OSR
+fi
+
+# --- 2. app names ----------------------------------------------------------
+rename_app() { # <desktop file id> <new name>
+    src="/usr/share/applications/$1"
+    dst="/usr/local/share/applications/$1"
+    if [ ! -e "$src" ]; then
+        rm -f "$dst"
+        return 0
+    fi
+    mkdir -p /usr/local/share/applications
+    # Only touch the main [Desktop Entry] section; translated names are dropped
+    # so every language shows the FrostOS name.
+    awk -v name="$2" '
+        /^\[/ { section = $0 }
+        section == "[Desktop Entry]" && /^Name\[/ { next }
+        section == "[Desktop Entry]" && /^Name=/  { print "Name=" name; next }
+        { print }
+    ' "$src" > "$dst.tmp" && mv "$dst.tmp" "$dst"
+    chmod 644 "$dst"
+}
+
+rename_app org.kde.dolphin.desktop    "Frost Files"
+rename_app org.kde.konsole.desktop    "Frost Terminal"
+rename_app systemsettings.desktop     "Frost Settings"
+rename_app org.kde.discover.desktop   "Frost Store"
+
+exit 0
