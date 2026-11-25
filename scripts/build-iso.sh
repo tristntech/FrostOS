@@ -96,7 +96,7 @@ cat "$REPO_DIR/iso/config/kdeglobals.in" "$AIROOTFS/usr/share/color-schemes/Fros
 #    text screen; FrostOS uses NetworkManager and the SDDM login manager instead.
 SYSD="$AIROOTFS/etc/systemd/system"
 echo "Removing from releng:"
-find "$SYSD" \( -name 'systemd-networkd*' -o -name 'iwd.service' \) -print -delete
+find "$SYSD" ! -type d \( -name 'systemd-networkd*' -o -name 'iwd.service' \) -print -delete
 rm -fv "$SYSD/getty@tty1.service.d/autologin.conf"
 enable_unit() { # <folder inside /etc/systemd/system> <link name> <unit in /usr/lib/systemd/system or /etc/systemd/system>
     mkdir -p "$SYSD/$1"
