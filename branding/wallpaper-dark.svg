@@ -10,7 +10,7 @@
     <linearGradient id="front" x1="0" y1="900" x2="0" y2="1080" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#22405F"/><stop offset="1" stop-color="#1A3149"/>
     </linearGradient>
-    <filter id="soft" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="55"/></filter>
+    <filter id="soft" filterUnits="userSpaceOnUse" x="-300" y="-300" width="2520" height="1200"><feGaussianBlur stdDeviation="55"/></filter>
   </defs>
   <rect width="1920" height="1080" fill="url(#sky)"/>
   <path d="M-100 380 C300 250 700 420 1100 300 S1700 180 2050 320" fill="none" stroke="#55AFFF" stroke-opacity="0.35" stroke-width="130" filter="url(#soft)"/>
