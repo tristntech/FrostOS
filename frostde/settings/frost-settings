@@ -1205,10 +1205,13 @@ class SettingsApp(Adw.Application):
 
     def do_startup(self):
         Adw.Application.do_startup(self)
+        display = Gdk.Display.get_default()
+        if display is None:
+            print("Frost Settings needs a graphical desktop to run.", file=sys.stderr)
+            sys.exit(1)
         provider = Gtk.CssProvider()
         provider.load_from_string(CSS.decode())
-        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider,
-                                                  Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        Gtk.StyleContext.add_provider_for_display(display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         quit_action = Gio.SimpleAction.new("quit", None)
         quit_action.connect("activate", lambda *_: self.quit())
         self.add_action(quit_action)

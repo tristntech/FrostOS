@@ -1,5 +1,8 @@
-# AUR packages that scripts/build-aur.sh builds and puts in the ISO.
+# Extra packages that scripts/build-aur.sh builds and puts in the ISO.
 # One per line. Only add packages you trust: AUR packages are not checked by Arch.
+#   name        a package from the AUR
+#   arch/name   an official Arch package rebuilt from Arch's own recipe
 
 brave-bin             # official Brave browser package, maintained by Brave Software
 whitesur-icon-theme   # macOS-style icon theme (GPL-3.0), by vinceliuice
+arch/quickshell       # the FrostDE shell engine, rebuilt so it matches the Qt version in the ISO

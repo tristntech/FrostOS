@@ -26,6 +26,13 @@ pacman -Syu --noconfirm --needed \
     inter-font noto-fonts ttf-jetbrains-mono ttf-nerd-fonts-symbols \
     libnotify dbus librsvg mesa glib2 dconf >/dev/null
 
+echo "==> Rebuilding quickshell against the current Qt"
+bash "$REPO_DIR/scripts/build-aur.sh" /tmp/localrepo arch/quickshell
+pacman -U --noconfirm /tmp/localrepo/quickshell-[0-9]*.pkg.tar.zst
+
+# Arch gives sway a file capability that unprivileged containers refuse to run.
+setcap -r /usr/bin/sway 2>/dev/null || true
+
 echo "==> Installing FrostDE into the test container"
 install -d /usr/share/frostde /usr/share/backgrounds/frostos /usr/share/applications
 cp -r "$FROSTDE/shell" "$FROSTDE/gtk" /usr/share/frostde/

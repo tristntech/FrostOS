@@ -46,14 +46,22 @@ mv "$PROFILE_DIR/packages.merged" "$PROFILE_DIR/packages.x86_64"
 # 3. ISO name and file permissions. Later lines in profiledef.sh override earlier ones.
 cat "$REPO_DIR/iso/profiledef-extra.sh" >> "$PROFILE_DIR/profiledef.sh"
 
-# 4. AUR packages (Brave, icons) go into a local repo that only this build uses.
+# 4. Extra packages (Brave and icons from the AUR, quickshell rebuilt for the
+#    current Qt) go into a local repo that only this build uses. It is listed
+#    before Arch's repos, so our quickshell is the one that gets installed.
 bash "$REPO_DIR/scripts/build-aur.sh" "$LOCAL_REPO"
-cat >> "$PROFILE_DIR/pacman.conf" <<EOF
-
-[frostos-local]
-SigLevel = Optional TrustAll
-Server = file://$LOCAL_REPO
-EOF
+awk -v repo="$LOCAL_REPO" '
+    !done && /^\[core\]/ {
+        print "[frostos-local]"
+        print "SigLevel = Optional TrustAll"
+        print "Server = file://" repo
+        print ""
+        done = 1
+    }
+    { print }
+' "$PROFILE_DIR/pacman.conf" > "$PROFILE_DIR/pacman.conf.new"
+mv "$PROFILE_DIR/pacman.conf.new" "$PROFILE_DIR/pacman.conf"
+grep -q '^\[frostos-local\]' "$PROFILE_DIR/pacman.conf"
 
 # 5. FrostDE itself.
 install -d "$AIROOTFS/usr/share/frostde" "$AIROOTFS/usr/bin" "$AIROOTFS/usr/share/applications" \
