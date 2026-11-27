@@ -14,8 +14,8 @@ PanelWindow {
     visible: Overlays.controlCenterOpen
 
     anchors { top: true; right: true }
-    margins { top: 6; right: 8 }
-    exclusionMode: ExclusionMode.Normal
+    margins { top: Theme.menuBarHeight + 6; right: 8 }
+    exclusionMode: ExclusionMode.Ignore
     implicitWidth: 330
     implicitHeight: panel.height
     color: "transparent"

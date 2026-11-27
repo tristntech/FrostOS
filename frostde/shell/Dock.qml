@@ -39,8 +39,10 @@ PanelWindow {
     // ---- what is in the dock ----
     readonly property var items: {
         const list = [{ kind: "launchpad" }];
-        for (const id of Config.pinnedApps)
-            list.push({ kind: "app", appId: id });
+        for (const id of Config.pinnedApps) {
+            if (Apps.entry(id) !== null)          // skip apps that are not installed
+                list.push({ kind: "app", appId: id });
+        }
         for (const id of Apps.runningApps) {
             if (!Apps.isPinned(id))
                 list.push({ kind: "app", appId: id });

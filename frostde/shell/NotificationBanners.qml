@@ -7,10 +7,12 @@ import Quickshell.Wayland
 PanelWindow {
     id: win
     screen: Overlays.activeScreen
-    visible: Notifs.banners.length > 0 && !Overlays.notificationCenterOpen
+    visible: Notifs.banners.length > 0 && !Overlays.notificationCenterOpen && !Overlays.controlCenterOpen
+             && !Overlays.launchpadOpen && !Overlays.spotlightOpen
 
     anchors { top: true; right: true }
-    margins { top: 8; right: 10 }
+    exclusionMode: ExclusionMode.Ignore
+    margins { top: Theme.menuBarHeight + 4; right: 10 }
     implicitWidth: 360
     implicitHeight: Math.max(1, stack.height + 8)
     color: "transparent"

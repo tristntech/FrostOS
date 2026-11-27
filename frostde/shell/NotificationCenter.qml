@@ -11,7 +11,8 @@ PanelWindow {
     visible: Overlays.notificationCenterOpen
 
     anchors { top: true; right: true; bottom: true }
-    margins { top: 6; right: 8; bottom: 90 }
+    exclusionMode: ExclusionMode.Ignore
+    margins { top: Theme.menuBarHeight + 6; right: 8; bottom: 90 }
     implicitWidth: 370
     color: "transparent"
     WlrLayershell.layer: WlrLayer.Overlay
@@ -38,17 +39,11 @@ PanelWindow {
             text: Qt.formatDate(clock.date, "dddd")
             font.pixelSize: 15
             font.weight: Font.DemiBold
-            color: "#FFFFFF"
-            style: Text.Raised
-            styleColor: Qt.rgba(0, 0, 0, 0.3)
         }
         Label {
             text: Qt.formatDate(clock.date, "d MMMM")
             font.pixelSize: 30
             font.weight: Font.Light
-            color: "#FFFFFF"
-            style: Text.Raised
-            styleColor: Qt.rgba(0, 0, 0, 0.3)
         }
     }
 

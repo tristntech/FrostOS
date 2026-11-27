@@ -682,31 +682,39 @@ class AppearancePage(Page):
         self.get_root().show_page("appearance")
 
     def add_wallpapers(self, cfg):
-        group = Adw.PreferencesGroup(title="Wallpaper")
+        group = Adw.PreferencesGroup(title="Wallpaper",
+                                     description="FrostOS wallpapers switch to a night version in Dark mode.")
         self.add(group)
-        flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=3,
-                           column_spacing=12, row_spacing=12, homogeneous=True)
-        pictures = []
+        flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, min_children_per_line=2,
+                           max_children_per_line=4, column_spacing=12, row_spacing=12,
+                           halign=Gtk.Align.START)
+        files = []
         if os.path.isdir(WALLPAPER_DIR):
-            pictures = sorted(os.path.join(WALLPAPER_DIR, f) for f in os.listdir(WALLPAPER_DIR)
-                              if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp")))
+            files = sorted(f for f in os.listdir(WALLPAPER_DIR)
+                           if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp")))
+        # Show each light/dark pair once (the light picture stands for both).
+        pictures = [os.path.join(WALLPAPER_DIR, f) for f in files
+                    if not ("-dark" in f and f.replace("-dark", "-light") in files)]
         light = cfg.get("wallpaperLight")
         for path in pictures:
             pic = Gtk.Picture.new_for_filename(path)
             pic.set_content_fit(Gtk.ContentFit.COVER)
-            pic.set_size_request(160, 90)
+            pic.set_can_shrink(True)
+            pic.set_size_request(176, 99)
             pic.add_css_class("frost-wallpaper")
             if path == light:
                 pic.add_css_class("frost-wallpaper-selected")
-            button = Gtk.Button(child=pic, tooltip_text=os.path.basename(path))
+            button = Gtk.Button(child=pic, tooltip_text=os.path.basename(path), hexpand=False, vexpand=False)
             button.add_css_class("flat")
             button.connect("clicked", self.on_wallpaper, path)
             flow.append(button)
         group.add(flow)
 
+        more = Adw.PreferencesGroup()
+        self.add(more)
         choose = Adw.ButtonRow(title="Choose a Picture…")
         choose.connect("activated", self.on_choose)
-        group.add(choose)
+        more.add(choose)
 
     def on_wallpaper(self, button, path):
         # The FrostOS wallpapers come in pairs (…-light / …-dark); use the pair if there is one.
@@ -1038,7 +1046,9 @@ class AboutPage(Page):
         self.add(head)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, halign=Gtk.Align.CENTER,
                       margin_top=12, margin_bottom=12)
-        logo = Gtk.Image.new_from_icon_name("frostos")
+        logo_file = "/usr/share/icons/hicolor/scalable/apps/frostos.svg"
+        logo = Gtk.Image.new_from_file(logo_file) if os.path.exists(logo_file) else \
+            Gtk.Image.new_from_icon_name("frostos")
         logo.set_pixel_size(112)
         box.append(logo)
         name = Gtk.Label(label="FrostOS")

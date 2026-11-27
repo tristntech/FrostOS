@@ -27,7 +27,11 @@ Singleton {
 
     function name(appId) {
         const e = entry(appId);
-        return e ? e.name : (appId || "");
+        if (e)
+            return e.name;
+        // No .desktop file: turn "org.example.MyApp" into "MyApp".
+        const last = (appId || "").split(".").pop();
+        return last.charAt(0).toUpperCase() + last.slice(1);
     }
 
     function icon(appId) {
