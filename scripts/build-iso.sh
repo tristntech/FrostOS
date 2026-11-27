@@ -26,7 +26,7 @@ pacman-key --init >/dev/null 2>&1 || true
 pacman -Syu --noconfirm --needed archiso librsvg inter-font noto-fonts dconf python
 
 echo "==> Checking FrostDE files"
-python -m py_compile "$FROSTDE/settings/frost-settings"
+python -c 'import ast, sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])' "$FROSTDE/settings/frost-settings"
 for f in "$FROSTDE"/bin/*; do bash -n "$f"; done
 
 echo "==> Preparing the archiso profile"
