@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Shows a welcome notification the first time you log in.
+marker="$HOME/.config/frostde/welcomed"
+[[ -e "$marker" ]] && exit 0
+sleep 3
+notify-send --app-name=FrostOS --icon=frostos "Welcome to FrostOS" \
+    "Super+Space: search  ·  Super+A: Launchpad  ·  Click the snowflake for the FrostOS menu."
+touch "$marker"

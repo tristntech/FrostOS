@@ -1,0 +1,54 @@
+/* FrostDE look for GTK 4 / libadwaita apps (Files, Terminal, Settings, ...).
+   Frost Settings rewrites this file when you change the accent color.
+   Apps pick up changes the next time they open. */
+
+/* ---- FrostOS colors ---- */
+@define-color accent_bg_color #3598F0;
+@define-color accent_color #2480D6;
+:root {
+    --accent-bg-color: #3598F0;
+    --accent-color: #2480D6;
+    --window-bg-color: #F8FCFF;
+    --view-bg-color: #FFFFFF;
+    --headerbar-bg-color: #F3F8FC;
+    --sidebar-bg-color: #EEF5FB;
+    --card-bg-color: #FFFFFF;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --accent-color: #8CCFFF;
+        --window-bg-color: #101E2E;
+        --view-bg-color: #0C1826;
+        --headerbar-bg-color: #142436;
+        --sidebar-bg-color: #12202F;
+        --card-bg-color: #17293C;
+    }
+}
+
+/* ---- macOS-style window buttons: red, yellow, green circles ---- */
+windowcontrols {
+    border-spacing: 8px;
+}
+windowcontrols > button {
+    min-width: 14px;
+    min-height: 14px;
+    padding: 0;
+    margin: 0;
+    background: none;
+    box-shadow: none;
+}
+windowcontrols > button > image {
+    min-width: 12px;
+    min-height: 12px;
+    padding: 1px;
+    border-radius: 9999px;
+    -gtk-icon-size: 8px;
+    color: transparent;
+    background-image: none;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+windowcontrols > button.close > image    { background-color: #FF5F57; }
+windowcontrols > button.minimize > image { background-color: #FEBC2E; }
+windowcontrols > button.maximize > image { background-color: #28C840; }
+windowcontrols:hover > button > image     { color: rgba(0, 0, 0, 0.55); }
+windowcontrols > button:backdrop > image  { background-color: alpha(currentColor, 0.18); }

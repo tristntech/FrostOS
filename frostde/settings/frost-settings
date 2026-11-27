@@ -1,0 +1,1227 @@
+#!/usr/bin/env python3
+"""Frost Settings: the FrostOS settings app (GTK 4 + libadwaita).
+
+Each page in the sidebar talks to a real part of the system:
+  Wi-Fi             NetworkManager (nmcli)
+  Bluetooth         BlueZ (bluetoothctl)
+  Sound             PipeWire (pactl)
+  Displays          Hyprland (hyprctl), saved to ~/.config/frostde/monitors.lua
+  Appearance, Dock,
+  Notifications     ~/.config/frostde/settings.json (the FrostDE shell watches it)
+  Keyboard          Hyprland, saved to ~/.config/frostde/keyboard.lua
+  Date & Time       systemd (timedatectl)
+  Battery           power-profiles-daemon (powerprofilesctl), UPower (upower)
+  Privacy & Security  ufw firewall
+  ...
+
+Run with --page <name> to open a page directly, e.g. frost-settings --page wifi
+"""
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import threading
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk  # noqa: E402
+
+APP_ID = "org.frostos.Settings"
+HOME = os.path.expanduser("~")
+CONFIG_DIR = os.path.join(HOME, ".config", "frostde")
+CONFIG_FILE = os.path.join(CONFIG_DIR, "settings.json")
+DEFAULT_CONFIG = "/usr/share/frostde/settings.json"
+WALLPAPER_DIR = "/usr/share/backgrounds/frostos"
+
+ACCENTS = [
+    # name, color used by FrostDE, GNOME accent name, GTK accent (darker, for text on white)
+    ("Frost", "#55AFFF", "blue", "#3598F0", "#2480D6"),
+    ("Teal", "#2EC4B6", "teal", "#1FA89B", "#13867C"),
+    ("Green", "#3CC46A", "green", "#2BA556", "#1E8A45"),
+    ("Yellow", "#F5C02E", "yellow", "#D9A30F", "#A97F06"),
+    ("Orange", "#FF9F43", "orange", "#F08A24", "#C86C10"),
+    ("Red", "#FF5F67", "red", "#E5484D", "#C2363B"),
+    ("Pink", "#FF6FB5", "pink", "#E5559B", "#C13C7E"),
+    ("Purple", "#A88BFF", "purple", "#8C6CF0", "#6F50D6"),
+    ("Graphite", "#8A99A8", "slate", "#6E7F90", "#566676"),
+]
+
+KEYBOARD_LAYOUTS = [
+    ("us", "English (US)"), ("gb", "English (UK)"), ("de", "German"), ("fr", "French"),
+    ("es", "Spanish"), ("it", "Italian"), ("pt", "Portuguese"), ("br", "Portuguese (Brazil)"),
+    ("nl", "Dutch"), ("se", "Swedish"), ("no", "Norwegian"), ("dk", "Danish"), ("fi", "Finnish"),
+    ("pl", "Polish"), ("cz", "Czech"), ("hu", "Hungarian"), ("tr", "Turkish"), ("ru", "Russian"),
+    ("ua", "Ukrainian"), ("gr", "Greek"), ("jp", "Japanese"), ("kr", "Korean"),
+    ("ch", "Swiss"), ("be", "Belgian"), ("ca", "Canadian (French)"), ("latam", "Spanish (Latin America)"),
+]
+
+SHORTCUTS = [
+    ("Super + Space", "Spotlight search"),
+    ("Super + A", "Launchpad"),
+    ("Super + K", "Control Center"),
+    ("Super + N", "Notification Center"),
+    ("Super + Return", "New Terminal window"),
+    ("Super + E", "New Files window"),
+    ("Super + B", "Brave browser"),
+    ("Super + ,", "Frost Settings"),
+    ("Super + W  /  Super + Q", "Close window"),
+    ("Super + M  /  Super + H", "Minimize window"),
+    ("Super + F", "Full screen"),
+    ("Super + Ctrl + F", "Zoom (fill the screen)"),
+    ("Super + T", "Tile / float window"),
+    ("Super + 1 … 9", "Go to desktop 1 … 9"),
+    ("Super + Shift + 1 … 9", "Move window to desktop 1 … 9"),
+    ("Super + Ctrl + ← / →", "Previous / next desktop"),
+    ("Super + drag", "Move a window from anywhere inside it"),
+    ("Super + right-drag", "Resize a window"),
+    ("Super + Shift + 3", "Screenshot of the whole screen"),
+    ("Super + Shift + 4", "Screenshot of an area"),
+    ("Super + L", "Lock screen"),
+    ("Super + Shift + Q", "Log out"),
+]
+
+CSS = b"""
+.frost-icon { border-radius: 7px; padding: 4px; color: white; min-width: 18px; min-height: 18px; }
+.frost-icon.blue   { background: linear-gradient(#5FB6FF, #2F8FE8); }
+.frost-icon.indigo { background: linear-gradient(#7C8CFF, #5563E8); }
+.frost-icon.red    { background: linear-gradient(#FF7A72, #E5484D); }
+.frost-icon.green  { background: linear-gradient(#4CD57A, #2BA556); }
+.frost-icon.orange { background: linear-gradient(#FFB15C, #F08A24); }
+.frost-icon.purple { background: linear-gradient(#B79CFF, #8C6CF0); }
+.frost-icon.gray   { background: linear-gradient(#A3B1BF, #6E7F90); }
+.frost-icon.teal   { background: linear-gradient(#4FD8CB, #1FA89B); }
+.frost-icon.navy   { background: linear-gradient(#3B5A7A, #172B40); }
+.frost-swatch { border-radius: 9999px; min-width: 24px; min-height: 24px; padding: 0; }
+.frost-wallpaper { border-radius: 10px; }
+.frost-wallpaper-selected { outline: 3px solid @accent_bg_color; outline-offset: 2px; }
+.frost-about-name { font-size: 26px; font-weight: 700; }
+.frost-key { font-family: monospace; }
+"""
+
+
+# --------------------------------------------------------------------------
+# Small helpers
+# --------------------------------------------------------------------------
+
+def run(cmd, timeout=15):
+    """Runs a command and returns (exit code, output). Never raises."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, (p.stdout or "") + (p.stderr or "" if p.returncode else "")
+    except FileNotFoundError:
+        return 127, f"{cmd[0]} is not installed"
+    except subprocess.TimeoutExpired:
+        return 124, f"{cmd[0]} took too long"
+
+
+def run_async(cmd, callback=None, timeout=60):
+    """Runs a command in the background, then calls callback(code, output) on the UI thread."""
+    def worker():
+        code, out = run(cmd, timeout)
+        if callback:
+            GLib.idle_add(lambda: (callback(code, out), False)[1])
+    threading.Thread(target=worker, daemon=True).start()
+
+
+def have(program):
+    return shutil.which(program) is not None
+
+
+def load_config():
+    for path in (CONFIG_FILE, DEFAULT_CONFIG):
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            continue
+    return {}
+
+
+def save_config(**changes):
+    """Updates ~/.config/frostde/settings.json. The FrostDE shell picks it up at once."""
+    data = load_config()
+    data.update(changes)
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    tmp = CONFIG_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=4)
+    os.replace(tmp, CONFIG_FILE)
+
+
+def write_text(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+def gsettings(schema, key, value):
+    run_async(["gsettings", "set", schema, key, value])
+
+
+def hypr_eval(lua):
+    """Applies a Hyprland setting right away (it is also saved to a file by the caller)."""
+    run_async(["hyprctl", "eval", lua])
+
+
+def lua_string(s):
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def read_file(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def human_size(n):
+    for unit in ("bytes", "KB", "MB", "GB", "TB"):
+        if n < 1000 or unit == "TB":
+            return f"{n:.0f} {unit}" if unit == "bytes" else f"{n:.1f} {unit}"
+        n /= 1000
+    return str(n)
+
+
+def icon_box(icon_name, color):
+    """A white symbol on a colored rounded square, like in macOS System Settings."""
+    img = Gtk.Image.new_from_icon_name(icon_name)
+    img.set_pixel_size(16)
+    img.add_css_class("frost-icon")
+    img.add_css_class(color)
+    img.set_valign(Gtk.Align.CENTER)
+    return img
+
+
+def toast(widget, text):
+    win = widget.get_root()
+    if isinstance(win, SettingsWindow):
+        win.toasts.add_toast(Adw.Toast.new(text))
+
+
+def info_row(title, subtitle):
+    row = Adw.ActionRow(title=title, subtitle=subtitle or "—")
+    row.add_css_class("property")
+    row.set_subtitle_selectable(True)
+    return row
+
+
+def status_page(icon, title, description):
+    return Adw.StatusPage(icon_name=icon, title=title, description=description)
+
+
+# --------------------------------------------------------------------------
+# Pages. Each page is built fresh every time it is opened, so it shows
+# the current state of the system.
+# --------------------------------------------------------------------------
+
+class Page(Adw.PreferencesPage):
+    """Base class for a settings page."""
+
+
+# ---- Wi-Fi -------------------------------------------------------------------
+
+class WifiPage(Page):
+    def __init__(self):
+        super().__init__()
+        if not have("nmcli"):
+            self.add_group_message("NetworkManager is not installed.")
+            return
+
+        self.top = Adw.PreferencesGroup()
+        self.add(self.top)
+        self.switch = Adw.SwitchRow(title="Wi-Fi")
+        self.top.add(self.switch)
+        self.current = Adw.ActionRow(title="Not connected")
+        self.top.add(self.current)
+
+        self.networks = Adw.PreferencesGroup(title="Other Networks")
+        self.scan_button = Gtk.Button(icon_name="view-refresh-symbolic", tooltip_text="Look for networks")
+        self.scan_button.add_css_class("flat")
+        self.scan_button.connect("clicked", lambda *_: self.refresh(rescan=True))
+        self.networks.set_header_suffix(self.scan_button)
+        self.add(self.networks)
+        self.network_rows = []
+
+        self.wired = Adw.PreferencesGroup(title="Ethernet")
+        self.add(self.wired)
+        self.wired_row = Adw.ActionRow(title="Ethernet")
+        self.wired.add(self.wired_row)
+
+        self.updating = False
+        self.switch.connect("notify::active", self.on_switch)
+        self.refresh()
+
+    def add_group_message(self, text):
+        group = Adw.PreferencesGroup()
+        group.add(Adw.ActionRow(title=text))
+        self.add(group)
+
+    def on_switch(self, *_):
+        if self.updating:
+            return
+        on = self.switch.get_active()
+        run_async(["nmcli", "radio", "wifi", "on" if on else "off"],
+                  lambda *_: GLib.timeout_add(1500, lambda: (self.refresh(), False)[1]))
+
+    def refresh(self, rescan=False):
+        run_async(["nmcli", "-t", "-f", "TYPE,STATE,CONNECTION", "device"], self.got_devices)
+        run_async(["nmcli", "radio", "wifi"], self.got_radio)
+        cmd = ["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list"]
+        if rescan:
+            cmd += ["--rescan", "yes"]
+        run_async(cmd, self.got_networks)
+
+    @staticmethod
+    def split(line):
+        return [p.replace("\x01", ":") for p in line.replace("\\:", "\x01").split(":")]
+
+    def got_radio(self, code, out):
+        self.updating = True
+        self.switch.set_active(out.strip() == "enabled")
+        self.updating = False
+
+    def got_devices(self, code, out):
+        has_wifi = False
+        wired = None
+        for line in out.splitlines():
+            parts = self.split(line)
+            if len(parts) < 3:
+                continue
+            if parts[0] == "wifi":
+                has_wifi = True
+                if parts[1] == "connected":
+                    self.current.set_title(parts[2])
+                    self.current.set_subtitle("Connected")
+            elif parts[0] == "ethernet":
+                wired = parts
+        self.switch.set_sensitive(has_wifi)
+        if not has_wifi:
+            self.current.set_title("No Wi-Fi hardware found")
+            self.current.set_subtitle("This computer has no Wi-Fi adapter, or it is not supported.")
+        self.wired.set_visible(wired is not None)
+        if wired:
+            self.wired_row.set_subtitle("Connected" if wired[1] == "connected" else "Not connected")
+
+    def got_networks(self, code, out):
+        for row in self.network_rows:
+            self.networks.remove(row)
+        self.network_rows = []
+        seen = set()
+        for line in out.splitlines():
+            parts = self.split(line)
+            if len(parts) < 4 or not parts[1] or parts[1] in seen:
+                continue
+            in_use, ssid, signal, security = parts[0] == "*", parts[1], parts[2], parts[3]
+            seen.add(ssid)
+            if in_use:
+                self.current.set_title(ssid)
+                self.current.set_subtitle("Connected")
+                continue
+            strength = int(signal) if signal.isdigit() else 0
+            icon = ("network-wireless-signal-excellent-symbolic" if strength > 75 else
+                    "network-wireless-signal-good-symbolic" if strength > 50 else
+                    "network-wireless-signal-ok-symbolic" if strength > 25 else
+                    "network-wireless-signal-weak-symbolic")
+            row = Adw.ActionRow(title=ssid, subtitle="Secured" if security not in ("", "--") else "Open")
+            row.add_suffix(Gtk.Image.new_from_icon_name(icon))
+            row.set_activatable(True)
+            row.connect("activated", self.on_network, ssid, security not in ("", "--"))
+            self.networks.add(row)
+            self.network_rows.append(row)
+        if not self.network_rows:
+            row = Adw.ActionRow(title="No other networks found")
+            self.networks.add(row)
+            self.network_rows.append(row)
+
+    def on_network(self, row, ssid, secured):
+        if not secured:
+            self.connect_to(ssid, None)
+            return
+        dialog = Adw.AlertDialog(heading=f"Join “{ssid}”", body="Enter the Wi-Fi password.")
+        entry = Adw.PasswordEntryRow(title="Password")
+        box = Gtk.ListBox()
+        box.add_css_class("boxed-list")
+        box.append(entry)
+        dialog.set_extra_child(box)
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("join", "Join")
+        dialog.set_response_appearance("join", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("join")
+
+        def on_response(d, response):
+            if response == "join":
+                self.connect_to(ssid, entry.get_text())
+        dialog.connect("response", on_response)
+        dialog.present(self.get_root())
+
+    def connect_to(self, ssid, password):
+        toast(self, f"Joining {ssid}…")
+        cmd = ["nmcli", "device", "wifi", "connect", ssid]
+        if password:
+            cmd += ["password", password]
+
+        def done(code, out):
+            toast(self, f"Connected to {ssid}" if code == 0 else f"Couldn't join {ssid}. Check the password.")
+            self.refresh()
+        run_async(cmd, done, timeout=45)
+
+
+# ---- Bluetooth ---------------------------------------------------------------
+
+class BluetoothPage(Page):
+    def __init__(self):
+        super().__init__()
+        self.group = Adw.PreferencesGroup()
+        self.add(self.group)
+        if not have("bluetoothctl"):
+            self.group.add(Adw.ActionRow(title="Bluetooth tools are not installed."))
+            return
+        self.switch = Adw.SwitchRow(title="Bluetooth")
+        self.group.add(self.switch)
+        self.state = Adw.ActionRow(title="Checking…")
+        self.group.add(self.state)
+
+        self.devices = Adw.PreferencesGroup(title="Devices")
+        scan = Gtk.Button(label="Search", tooltip_text="Look for nearby devices for 10 seconds")
+        scan.add_css_class("flat")
+        scan.connect("clicked", self.on_scan)
+        self.devices.set_header_suffix(scan)
+        self.add(self.devices)
+        self.device_rows = []
+
+        self.updating = False
+        self.switch.connect("notify::active", self.on_switch)
+        self.refresh()
+
+    def refresh(self):
+        run_async(["bluetoothctl", "show"], self.got_show)
+        run_async(["bluetoothctl", "devices"], self.got_devices)
+
+    def got_show(self, code, out):
+        if code != 0 or "Controller" not in out:
+            self.switch.set_sensitive(False)
+            self.state.set_title("No Bluetooth adapter found")
+            self.state.set_subtitle("This computer has no Bluetooth, or it is turned off in the BIOS.")
+            self.devices.set_visible(False)
+            return
+        powered = re.search(r"Powered:\s*yes", out) is not None
+        self.updating = True
+        self.switch.set_active(powered)
+        self.updating = False
+        name = re.search(r"Alias:\s*(.+)", out)
+        self.state.set_title("Now discoverable as “%s”" % name.group(1).strip() if name and powered else
+                             "Bluetooth is off")
+        self.devices.set_visible(powered)
+
+    def got_devices(self, code, out):
+        for row in self.device_rows:
+            self.devices.remove(row)
+        self.device_rows = []
+        for line in out.splitlines():
+            m = re.match(r"Device\s+([0-9A-F:]{17})\s+(.*)", line.strip())
+            if not m:
+                continue
+            address, name = m.group(1), m.group(2)
+            row = Adw.ActionRow(title=name, subtitle=address)
+            button = Gtk.Button(label="Connect", valign=Gtk.Align.CENTER)
+            button.connect("clicked", self.on_connect, address, name)
+            row.add_suffix(button)
+            forget = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Forget")
+            forget.add_css_class("flat")
+            forget.connect("clicked", self.on_forget, address)
+            row.add_suffix(forget)
+            run_async(["bluetoothctl", "info", address],
+                      lambda c, o, b=button, r=row: self.got_info(o, b, r))
+            self.devices.add(row)
+            self.device_rows.append(row)
+        if not self.device_rows:
+            row = Adw.ActionRow(title="No devices yet", subtitle="Put your device in pairing mode, then click Search.")
+            self.devices.add(row)
+            self.device_rows.append(row)
+
+    def got_info(self, out, button, row):
+        connected = re.search(r"Connected:\s*yes", out) is not None
+        button.set_label("Disconnect" if connected else "Connect")
+        row.set_subtitle("Connected" if connected else "Not connected")
+
+    def on_switch(self, *_):
+        if self.updating:
+            return
+        run_async(["bluetoothctl", "power", "on" if self.switch.get_active() else "off"],
+                  lambda *_: self.refresh())
+
+    def on_scan(self, button):
+        button.set_sensitive(False)
+        button.set_label("Searching…")
+
+        def done(*_):
+            button.set_sensitive(True)
+            button.set_label("Search")
+            self.refresh()
+        run_async(["bluetoothctl", "--timeout", "10", "scan", "on"], done, timeout=20)
+
+    def on_connect(self, button, address, name):
+        if button.get_label() == "Disconnect":
+            run_async(["bluetoothctl", "disconnect", address], lambda *_: self.refresh())
+            return
+        toast(self, f"Connecting to {name}…")
+        script = f"bluetoothctl pair {address}; bluetoothctl trust {address}; bluetoothctl connect {address}"
+
+        def done(code, out):
+            ok = "Connection successful" in out or code == 0
+            toast(self, f"Connected to {name}" if ok else f"Couldn't connect to {name}")
+            self.refresh()
+        run_async(["sh", "-c", script], done, timeout=60)
+
+    def on_forget(self, button, address):
+        run_async(["bluetoothctl", "remove", address], lambda *_: self.refresh())
+
+
+# ---- Sound -------------------------------------------------------------------
+
+class SoundPage(Page):
+    def __init__(self):
+        super().__init__()
+        self.group = Adw.PreferencesGroup(title="Output")
+        self.add(self.group)
+        if not have("pactl"):
+            self.group.add(Adw.ActionRow(title="Sound tools (pactl) are not installed."))
+            return
+
+        self.volume_row = Adw.ActionRow(title="Volume")
+        self.scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        self.scale.set_hexpand(True)
+        self.scale.set_size_request(260, -1)
+        self.scale.set_valign(Gtk.Align.CENTER)
+        self.volume_row.add_suffix(self.scale)
+        self.group.add(self.volume_row)
+
+        self.mute = Adw.SwitchRow(title="Mute")
+        self.group.add(self.mute)
+
+        self.devices = Adw.ComboRow(title="Output device")
+        self.group.add(self.devices)
+
+        self.sinks = []
+        self.updating = False
+        self.scale.connect("value-changed", self.on_volume)
+        self.mute.connect("notify::active", self.on_mute)
+        self.devices.connect("notify::selected", self.on_device)
+        self.refresh()
+
+    def refresh(self):
+        run_async(["pactl", "-f", "json", "list", "sinks"], self.got_sinks)
+
+    def got_sinks(self, code, out):
+        try:
+            sinks = json.loads(out) if code == 0 else []
+        except ValueError:
+            sinks = []
+        _, default = run(["pactl", "get-default-sink"])
+        default = default.strip()
+        self.updating = True
+        self.sinks = sinks
+        names = [s.get("description") or s.get("name", "Unknown") for s in sinks]
+        self.devices.set_model(Gtk.StringList.new(names or ["No output devices"]))
+        for i, s in enumerate(sinks):
+            if s.get("name") == default:
+                self.devices.set_selected(i)
+                vol = s.get("volume", {})
+                first = next(iter(vol.values()), {}) if isinstance(vol, dict) else {}
+                percent = str(first.get("value_percent", "0%")).rstrip("%")
+                self.scale.set_value(float(percent) if percent.replace(".", "").isdigit() else 0)
+                self.mute.set_active(bool(s.get("mute")))
+        self.updating = False
+
+    def on_volume(self, scale):
+        if not self.updating:
+            run_async(["pactl", "set-sink-volume", "@DEFAULT_SINK@", f"{int(scale.get_value())}%"])
+
+    def on_mute(self, *_):
+        if not self.updating:
+            run_async(["pactl", "set-sink-mute", "@DEFAULT_SINK@", "1" if self.mute.get_active() else "0"])
+
+    def on_device(self, *_):
+        i = self.devices.get_selected()
+        if not self.updating and 0 <= i < len(self.sinks):
+            run_async(["pactl", "set-default-sink", self.sinks[i]["name"]], lambda *_: self.refresh())
+
+
+# ---- Displays ----------------------------------------------------------------
+
+class DisplaysPage(Page):
+    SCALES = ["1", "1.25", "1.5", "1.75", "2"]
+
+    def __init__(self):
+        super().__init__()
+        code, out = run(["hyprctl", "monitors", "-j"])
+        try:
+            self.monitors = json.loads(out) if code == 0 else []
+        except ValueError:
+            self.monitors = []
+        if not self.monitors:
+            group = Adw.PreferencesGroup()
+            group.add(Adw.ActionRow(title="Display settings work inside FrostDE only."))
+            self.add(group)
+            return
+        self.rows = {}
+        for mon in self.monitors:
+            self.add_monitor(mon)
+        note = Adw.PreferencesGroup(description="Changes apply right away and are kept after a restart.")
+        self.add(note)
+
+    def add_monitor(self, mon):
+        name = mon.get("name", "?")
+        title = " ".join(x for x in (mon.get("make"), mon.get("model")) if x) or name
+        group = Adw.PreferencesGroup(title=title, description=name)
+        self.add(group)
+
+        modes = []
+        for m in mon.get("availableModes", []):
+            mm = re.match(r"(\d+)x(\d+)@([\d.]+)Hz", m)
+            if mm:
+                label = f"{mm.group(1)} × {mm.group(2)}  ({float(mm.group(3)):.0f} Hz)"
+                modes.append((m.replace("Hz", ""), label))
+        current = f"{mon.get('width')}x{mon.get('height')}@{mon.get('refreshRate', 60):.3f}"
+        res = Adw.ComboRow(title="Resolution")
+        res.set_model(Gtk.StringList.new([label for _, label in modes] or ["Automatic"]))
+        best = 0
+        for i, (mode, _) in enumerate(modes):
+            if mode.split("@")[0] == current.split("@")[0]:
+                best = i
+                break
+        res.set_selected(best)
+        group.add(res)
+
+        scale = Adw.ComboRow(title="Scale", subtitle="Makes text and windows bigger")
+        scale.set_model(Gtk.StringList.new([f"{float(s) * 100:.0f}%" for s in self.SCALES]))
+        cur_scale = float(mon.get("scale", 1))
+        scale.set_selected(min(range(len(self.SCALES)), key=lambda i: abs(float(self.SCALES[i]) - cur_scale)))
+        group.add(scale)
+
+        self.rows[name] = (res, scale, modes)
+        res.connect("notify::selected", lambda *_: self.apply())
+        scale.connect("notify::selected", lambda *_: self.apply())
+
+    def apply(self):
+        lines = ["-- Written by Frost Settings > Displays.", ""]
+        for mon in self.monitors:
+            name = mon.get("name")
+            if name not in self.rows:
+                continue
+            res, scale, modes = self.rows[name]
+            mode = modes[res.get_selected()][0] if modes else "preferred"
+            s = self.SCALES[scale.get_selected()]
+            lua = (f"hl.monitor({{ output = {lua_string(name)}, mode = {lua_string(mode)}, "
+                   f"position = \"auto\", scale = {s} }})")
+            lines.append(lua)
+            hypr_eval(lua)
+        write_text(os.path.join(CONFIG_DIR, "monitors.lua"), "\n".join(lines) + "\n")
+
+
+# ---- Appearance --------------------------------------------------------------
+
+class AppearancePage(Page):
+    def __init__(self):
+        super().__init__()
+        cfg = load_config()
+
+        mode = Adw.PreferencesGroup(title="Appearance")
+        self.add(mode)
+        self.mode_row = Adw.ComboRow(title="Mode")
+        self.mode_row.set_model(Gtk.StringList.new(["Light", "Dark"]))
+        self.mode_row.set_selected(1 if cfg.get("appearance") == "dark" else 0)
+        self.mode_row.connect("notify::selected", self.on_mode)
+        mode.add(self.mode_row)
+
+        accent_row = Adw.ActionRow(title="Accent color")
+        box = Gtk.Box(spacing=8, valign=Gtk.Align.CENTER)
+        current = cfg.get("accent", "#55AFFF").lower()
+        for name, color, gnome, gtk_bg, gtk_fg in ACCENTS:
+            button = Gtk.Button(tooltip_text=name)
+            button.add_css_class("frost-swatch")
+            provider = Gtk.CssProvider()
+            provider.load_from_string(f"button {{ background: {color}; }}"
+                                      + ("button { outline: 2px solid alpha(currentColor, 0.6); outline-offset: 2px; }"
+                                         if color.lower() == current else ""))
+            button.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            button.connect("clicked", self.on_accent, name, color, gnome, gtk_bg, gtk_fg)
+            box.append(button)
+        accent_row.add_suffix(box)
+        mode.add(accent_row)
+
+        motion = Adw.SwitchRow(title="Reduce motion", subtitle="Turn off FrostDE animations")
+        motion.set_active(bool(cfg.get("reduceMotion")))
+        motion.connect("notify::active", lambda r, *_: save_config(reduceMotion=r.get_active()))
+        mode.add(motion)
+
+        self.add_wallpapers(cfg)
+
+    def on_mode(self, *_):
+        save_config(appearance="dark" if self.mode_row.get_selected() == 1 else "light")
+
+    def on_accent(self, button, name, color, gnome, gtk_bg, gtk_fg):
+        save_config(accent=color)
+        gsettings("org.gnome.desktop.interface", "accent-color", gnome)
+        css_path = os.path.join(HOME, ".config", "gtk-4.0", "gtk.css")
+        css = read_file(css_path) or read_file("/usr/share/frostde/gtk/gtk4.css")
+        css = re.sub(r"(@define-color accent_bg_color )#[0-9A-Fa-f]{6}", rf"\g<1>{gtk_bg}", css)
+        css = re.sub(r"(@define-color accent_color )#[0-9A-Fa-f]{6}", rf"\g<1>{gtk_fg}", css)
+        css = re.sub(r"(--accent-bg-color: )#[0-9A-Fa-f]{6}", rf"\g<1>{gtk_bg}", css)
+        css = re.sub(r"(:root \{\s*--accent-bg-color: [^;]+;\s*--accent-color: )#[0-9A-Fa-f]{6}", rf"\g<1>{gtk_fg}", css)
+        write_text(css_path, css)
+        toast(self, f"Accent color: {name}. Open apps update the next time they start.")
+        self.get_root().show_page("appearance")
+
+    def add_wallpapers(self, cfg):
+        group = Adw.PreferencesGroup(title="Wallpaper")
+        self.add(group)
+        flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=3,
+                           column_spacing=12, row_spacing=12, homogeneous=True)
+        pictures = []
+        if os.path.isdir(WALLPAPER_DIR):
+            pictures = sorted(os.path.join(WALLPAPER_DIR, f) for f in os.listdir(WALLPAPER_DIR)
+                              if f.lower().endswith((".png", ".jpg", ".jpeg", ".webp")))
+        light = cfg.get("wallpaperLight")
+        for path in pictures:
+            pic = Gtk.Picture.new_for_filename(path)
+            pic.set_content_fit(Gtk.ContentFit.COVER)
+            pic.set_size_request(160, 90)
+            pic.add_css_class("frost-wallpaper")
+            if path == light:
+                pic.add_css_class("frost-wallpaper-selected")
+            button = Gtk.Button(child=pic, tooltip_text=os.path.basename(path))
+            button.add_css_class("flat")
+            button.connect("clicked", self.on_wallpaper, path)
+            flow.append(button)
+        group.add(flow)
+
+        choose = Adw.ButtonRow(title="Choose a Picture…")
+        choose.connect("activated", self.on_choose)
+        group.add(choose)
+
+    def on_wallpaper(self, button, path):
+        # The FrostOS wallpapers come in pairs (…-light / …-dark); use the pair if there is one.
+        dark = path.replace("-light", "-dark")
+        light = path.replace("-dark", "-light")
+        save_config(wallpaperLight=light if os.path.exists(light) else path,
+                    wallpaperDark=dark if os.path.exists(dark) else path)
+        self.get_root().show_page("appearance")
+
+    def on_choose(self, *_):
+        dialog = Gtk.FileDialog(title="Choose a Wallpaper")
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        images = Gtk.FileFilter(name="Pictures")
+        images.add_mime_type("image/*")
+        filters.append(images)
+        dialog.set_filters(filters)
+
+        def done(d, result):
+            try:
+                f = d.open_finish(result)
+            except GLib.Error:
+                return
+            if f and f.get_path():
+                save_config(wallpaperLight=f.get_path(), wallpaperDark=f.get_path())
+                self.get_root().show_page("appearance")
+        dialog.open(self.get_root(), None, done)
+
+
+# ---- Dock --------------------------------------------------------------------
+
+class DockPage(Page):
+    def __init__(self):
+        super().__init__()
+        cfg = load_config()
+        group = Adw.PreferencesGroup(title="Dock")
+        self.add(group)
+
+        size = Adw.SpinRow.new_with_range(32, 96, 2)
+        size.set_title("Size")
+        size.set_subtitle("Icon size in pixels")
+        size.set_value(cfg.get("dockSize", 52))
+        size.connect("notify::value", lambda r, *_: save_config(dockSize=int(r.get_value())))
+        group.add(size)
+
+        mag = Adw.SwitchRow(title="Magnification", subtitle="Icons grow when you point at them")
+        mag.set_active(cfg.get("dockMagnification", True))
+        mag.connect("notify::active", lambda r, *_: save_config(dockMagnification=r.get_active()))
+        group.add(mag)
+
+        big = Adw.SpinRow.new_with_range(40, 128, 2)
+        big.set_title("Magnified size")
+        big.set_value(cfg.get("dockMagnifiedSize", 84))
+        big.connect("notify::value", lambda r, *_: save_config(dockMagnifiedSize=int(r.get_value())))
+        mag.bind_property("active", big, "sensitive", GObject.BindingFlags.SYNC_CREATE)
+        group.add(big)
+
+        hide = Adw.SwitchRow(title="Automatically hide and show the Dock")
+        hide.set_active(cfg.get("dockAutohide", False))
+        hide.connect("notify::active", lambda r, *_: save_config(dockAutohide=r.get_active()))
+        group.add(hide)
+
+        apps = Adw.PreferencesGroup(title="Apps in the Dock",
+                                    description="To add an app, open it, right-click its icon in the Dock and "
+                                                "choose “Keep in Dock”.")
+        self.add(apps)
+        for app_id in cfg.get("pinnedApps", []):
+            info = Gio.DesktopAppInfo.new(app_id + ".desktop")
+            row = Adw.ActionRow(title=info.get_name() if info else app_id)
+            if info and info.get_icon():
+                img = Gtk.Image.new_from_gicon(info.get_icon())
+                img.set_pixel_size(32)
+                row.add_prefix(img)
+            remove = Gtk.Button(icon_name="list-remove-symbolic", valign=Gtk.Align.CENTER,
+                                tooltip_text="Remove from Dock")
+            remove.add_css_class("flat")
+            remove.connect("clicked", self.on_remove, app_id)
+            row.add_suffix(remove)
+            apps.add(row)
+
+    def on_remove(self, button, app_id):
+        cfg = load_config()
+        save_config(pinnedApps=[a for a in cfg.get("pinnedApps", []) if a != app_id])
+        self.get_root().show_page("dock")
+
+
+# ---- Notifications -----------------------------------------------------------
+
+class NotificationsPage(Page):
+    def __init__(self):
+        super().__init__()
+        cfg = load_config()
+        group = Adw.PreferencesGroup(title="Notifications")
+        self.add(group)
+        dnd = Adw.SwitchRow(title="Do Not Disturb",
+                            subtitle="Don't show banners. Notifications still go to the Notification Center.")
+        dnd.set_active(cfg.get("doNotDisturb", False))
+        dnd.connect("notify::active", lambda r, *_: save_config(doNotDisturb=r.get_active()))
+        group.add(dnd)
+        group.add(Adw.ActionRow(title="Notification Center",
+                                subtitle="Click the date and time in the menu bar, or press Super + N."))
+
+
+# ---- Keyboard ----------------------------------------------------------------
+
+class KeyboardPage(Page):
+    def __init__(self):
+        super().__init__()
+        group = Adw.PreferencesGroup(title="Keyboard")
+        self.add(group)
+        current = "us"
+        saved = read_file(os.path.join(CONFIG_DIR, "keyboard.lua"))
+        m = re.search(r'kb_layout\s*=\s*"([^"]+)"', saved)
+        if m:
+            current = m.group(1)
+        self.layouts = KEYBOARD_LAYOUTS
+        row = Adw.ComboRow(title="Keyboard layout")
+        row.set_model(Gtk.StringList.new([name for _, name in self.layouts]))
+        codes = [c for c, _ in self.layouts]
+        row.set_selected(codes.index(current) if current in codes else 0)
+        row.connect("notify::selected", self.on_layout)
+        group.add(row)
+
+        shortcuts = Adw.PreferencesGroup(title="Keyboard Shortcuts",
+                                         description="Super is the key with the Windows logo (Command on a Mac keyboard).")
+        self.add(shortcuts)
+        for keys, action in SHORTCUTS:
+            r = Adw.ActionRow(title=action)
+            label = Gtk.Label(label=keys)
+            label.add_css_class("dim-label")
+            label.add_css_class("frost-key")
+            r.add_suffix(label)
+            shortcuts.add(r)
+
+    def on_layout(self, row, *_):
+        code = self.layouts[row.get_selected()][0]
+        lua = f"hl.config({{ input = {{ kb_layout = {lua_string(code)} }} }})"
+        hypr_eval(lua)
+        write_text(os.path.join(CONFIG_DIR, "keyboard.lua"),
+                   "-- Written by Frost Settings > Keyboard.\n" + lua + "\n")
+        toast(self, "Keyboard layout changed")
+
+
+# ---- Date & Time -------------------------------------------------------------
+
+class DateTimePage(Page):
+    def __init__(self):
+        super().__init__()
+        cfg = load_config()
+        group = Adw.PreferencesGroup(title="Date & Time")
+        self.add(group)
+
+        h24 = Adw.SwitchRow(title="24-hour time")
+        h24.set_active(cfg.get("clock24h", False))
+        h24.connect("notify::active", self.on_24h)
+        group.add(h24)
+
+        _, out = run(["timedatectl", "show"])
+        values = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+
+        ntp = Adw.SwitchRow(title="Set time automatically", subtitle="Uses time servers on the internet")
+        ntp.set_active(values.get("NTP") == "yes")
+        ntp.connect("notify::active", lambda r, *_: run_async(
+            ["timedatectl", "set-ntp", "true" if r.get_active() else "false"]))
+        group.add(ntp)
+
+        _, zones = run(["timedatectl", "list-timezones"])
+        self.zones = [z for z in zones.splitlines() if z.strip()] or ["UTC"]
+        tz = Adw.ComboRow(title="Time zone", enable_search=True)
+        tz.set_model(Gtk.StringList.new(self.zones))
+        current = values.get("Timezone", "UTC")
+        if current in self.zones:
+            tz.set_selected(self.zones.index(current))
+        tz.connect("notify::selected", self.on_zone)
+        group.add(tz)
+
+    def on_24h(self, row, *_):
+        save_config(clock24h=row.get_active())
+        gsettings("org.gnome.desktop.interface", "clock-format", "24h" if row.get_active() else "12h")
+
+    def on_zone(self, row, *_):
+        zone = self.zones[row.get_selected()]
+        run_async(["timedatectl", "set-timezone", zone],
+                  lambda code, out: toast(self, f"Time zone: {zone}" if code == 0 else "Couldn't change the time zone"))
+
+
+# ---- Battery -----------------------------------------------------------------
+
+class BatteryPage(Page):
+    PROFILES = [("power-saver", "Low Power"), ("balanced", "Balanced"), ("performance", "High Performance")]
+
+    def __init__(self):
+        super().__init__()
+        group = Adw.PreferencesGroup(title="Battery")
+        self.add(group)
+        _, out = run(["upower", "-i", "/org/freedesktop/UPower/devices/DisplayDevice"])
+        pct = re.search(r"percentage:\s*([\d.]+)%", out)
+        state = re.search(r"state:\s*(\S+)", out)
+        present = re.search(r"is-present:\s*yes", out)
+        if present and pct:
+            group.add(info_row("Charge", f"{float(pct.group(1)):.0f}%"))
+            group.add(info_row("Status", (state.group(1) if state else "unknown").replace("-", " ").capitalize()))
+        else:
+            group.add(Adw.ActionRow(title="No battery", subtitle="This computer runs on mains power."))
+
+        power = Adw.PreferencesGroup(title="Energy Mode")
+        self.add(power)
+        if not have("powerprofilesctl"):
+            power.add(Adw.ActionRow(title="Power profiles are not available."))
+            return
+        _, current = run(["powerprofilesctl", "get"])
+        current = current.strip()
+        _, available = run(["powerprofilesctl", "list"])
+        profiles = [p for p in self.PROFILES if p[0] in available] or self.PROFILES[1:2]
+        row = Adw.ComboRow(title="Energy mode")
+        row.set_model(Gtk.StringList.new([label for _, label in profiles]))
+        ids = [p for p, _ in profiles]
+        if current in ids:
+            row.set_selected(ids.index(current))
+        row.connect("notify::selected", lambda r, *_: run_async(
+            ["powerprofilesctl", "set", ids[r.get_selected()]]))
+        power.add(row)
+
+
+# ---- Users -------------------------------------------------------------------
+
+class UsersPage(Page):
+    def __init__(self):
+        super().__init__()
+        import pwd
+        user = pwd.getpwuid(os.getuid())
+        group = Adw.PreferencesGroup(title="Your Account")
+        self.add(group)
+        group.add(info_row("Name", (user.pw_gecos or "").split(",")[0] or user.pw_name))
+        group.add(info_row("User name", user.pw_name))
+        group.add(info_row("Home folder", user.pw_dir))
+        change = Adw.ButtonRow(title="Change Password…")
+        change.connect("activated", lambda *_: subprocess.Popen(
+            ["ptyxis", "--new-window", "--", "passwd"], start_new_session=True))
+        group.add(change)
+
+
+# ---- Privacy & Security ------------------------------------------------------
+
+class PrivacyPage(Page):
+    def __init__(self):
+        super().__init__()
+        group = Adw.PreferencesGroup(title="Firewall",
+                                     description="Blocks connections from other computers that you didn't ask for.")
+        self.add(group)
+        if not have("ufw"):
+            group.add(Adw.ActionRow(title="The firewall (ufw) is not installed."))
+        else:
+            enabled = re.search(r"^ENABLED=yes", read_file("/etc/ufw/ufw.conf"), re.M) is not None
+            self.switch = Adw.SwitchRow(title="Firewall")
+            self.switch.set_active(enabled)
+            self.switch.connect("notify::active", self.on_firewall)
+            group.add(self.switch)
+
+        privacy = Adw.PreferencesGroup(title="Privacy")
+        self.add(privacy)
+        privacy.add(Adw.ActionRow(title="No tracking",
+                                  subtitle="FrostOS doesn't collect or send any information about you."))
+
+    def on_firewall(self, row, *_):
+        on = row.get_active()
+        script = "ufw --force enable && systemctl enable ufw" if on else "ufw disable && systemctl disable ufw"
+        run_async(["pkexec", "sh", "-c", script],
+                  lambda code, out: toast(self, ("Firewall on" if on else "Firewall off") if code == 0
+                                          else "Couldn't change the firewall"))
+
+
+# ---- Storage -----------------------------------------------------------------
+
+class StoragePage(Page):
+    def __init__(self):
+        super().__init__()
+        group = Adw.PreferencesGroup(title="Storage")
+        self.add(group)
+        st = os.statvfs(HOME)
+        total = st.f_blocks * st.f_frsize
+        free = st.f_bavail * st.f_frsize
+        used = total - free
+        row = Adw.ActionRow(title="Disk", subtitle=f"{human_size(free)} available of {human_size(total)}")
+        bar = Gtk.LevelBar(min_value=0, max_value=1, value=used / total if total else 0)
+        bar.set_size_request(220, -1)
+        bar.set_valign(Gtk.Align.CENTER)
+        row.add_suffix(bar)
+        group.add(row)
+        manage = Adw.ButtonRow(title="Open Files")
+        manage.connect("activated", lambda *_: subprocess.Popen(["nautilus", HOME], start_new_session=True))
+        group.add(manage)
+
+
+# ---- Software Update ---------------------------------------------------------
+
+class UpdatesPage(Page):
+    def __init__(self):
+        super().__init__()
+        group = Adw.PreferencesGroup(title="Software Update",
+                                     description="FrostOS is based on Arch Linux, which gets updates all the time.")
+        self.add(group)
+        self.status = Adw.ActionRow(title="Checking for updates…")
+        group.add(self.status)
+        open_store = Adw.ButtonRow(title="Open Frost Store Updates")
+        open_store.connect("activated", lambda *_: subprocess.Popen(
+            ["gnome-software", "--mode=updates"], start_new_session=True))
+        group.add(open_store)
+        if have("checkupdates"):
+            run_async(["checkupdates"], self.got_updates, timeout=120)
+        else:
+            self.status.set_title("Use Frost Store to check for updates.")
+
+    def got_updates(self, code, out):
+        count = len([line for line in out.splitlines() if line.strip()])
+        if code == 2 or count == 0:
+            self.status.set_title("Your system is up to date")
+        elif code == 0:
+            self.status.set_title(f"{count} update{'s' if count != 1 else ''} available")
+        else:
+            self.status.set_title("Couldn't check for updates. Are you online?")
+
+
+# ---- About -------------------------------------------------------------------
+
+class AboutPage(Page):
+    def __init__(self):
+        super().__init__()
+        head = Adw.PreferencesGroup()
+        self.add(head)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, halign=Gtk.Align.CENTER,
+                      margin_top=12, margin_bottom=12)
+        logo = Gtk.Image.new_from_icon_name("frostos")
+        logo.set_pixel_size(112)
+        box.append(logo)
+        name = Gtk.Label(label="FrostOS")
+        name.add_css_class("frost-about-name")
+        box.append(name)
+        version = Gtk.Label(label=self.version())
+        version.add_css_class("dim-label")
+        box.append(version)
+        head.add(box)
+
+        group = Adw.PreferencesGroup(title="This Computer")
+        self.add(group)
+        group.add(info_row("Processor", self.cpu()))
+        group.add(info_row("Memory", self.memory()))
+        group.add(info_row("Graphics", self.graphics()))
+        group.add(info_row("Disk", self.disk()))
+        group.add(info_row("Desktop", "FrostDE on Hyprland (Wayland)"))
+        group.add(info_row("Kernel", os.uname().release))
+
+    @staticmethod
+    def version():
+        release = read_file("/etc/frostos-release").strip()
+        return release or "Rolling release"
+
+    @staticmethod
+    def cpu():
+        m = re.search(r"model name\s*:\s*(.+)", read_file("/proc/cpuinfo"))
+        cores = os.cpu_count() or 1
+        return f"{m.group(1).strip() if m else 'Unknown'}  ({cores} cores)"
+
+    @staticmethod
+    def memory():
+        m = re.search(r"MemTotal:\s*(\d+)", read_file("/proc/meminfo"))
+        return f"{int(m.group(1)) / 1024 / 1024:.1f} GB" if m else "Unknown"
+
+    @staticmethod
+    def graphics():
+        code, out = run(["lspci"])
+        cards = [line.split(": ", 1)[1] for line in out.splitlines()
+                 if re.search(r"VGA|3D|Display", line) and ": " in line]
+        return ", ".join(cards) or "Unknown"
+
+    @staticmethod
+    def disk():
+        st = os.statvfs("/")
+        return human_size(st.f_blocks * st.f_frsize)
+
+
+# --------------------------------------------------------------------------
+# Window
+# --------------------------------------------------------------------------
+
+PAGES = [
+    # id, title, icon, color, page class, section
+    ("wifi", "Wi-Fi", "network-wireless-symbolic", "blue", WifiPage, 0),
+    ("bluetooth", "Bluetooth", "bluetooth-active-symbolic", "blue", BluetoothPage, 0),
+    ("sound", "Sound", "audio-speakers-symbolic", "red", SoundPage, 0),
+    ("displays", "Displays", "video-display-symbolic", "blue", DisplaysPage, 1),
+    ("appearance", "Appearance", "applications-graphics-symbolic", "navy", AppearancePage, 1),
+    ("dock", "Desktop & Dock", "user-desktop-symbolic", "navy", DockPage, 1),
+    ("notifications", "Notifications", "preferences-system-notifications-symbolic", "red", NotificationsPage, 1),
+    ("keyboard", "Keyboard", "input-keyboard-symbolic", "gray", KeyboardPage, 2),
+    ("datetime", "Date & Time", "preferences-system-time-symbolic", "indigo", DateTimePage, 2),
+    ("battery", "Battery", "battery-good-symbolic", "green", BatteryPage, 2),
+    ("users", "Users", "system-users-symbolic", "orange", UsersPage, 3),
+    ("privacy", "Privacy & Security", "security-high-symbolic", "teal", PrivacyPage, 3),
+    ("storage", "Storage", "drive-harddisk-symbolic", "gray", StoragePage, 4),
+    ("updates", "Software Update", "software-update-available-symbolic", "purple", UpdatesPage, 4),
+    ("about", "About", "help-about-symbolic", "gray", AboutPage, 4),
+]
+
+
+class SettingsWindow(Adw.ApplicationWindow):
+    def __init__(self, app):
+        super().__init__(application=app, title="Frost Settings")
+        self.set_default_size(980, 680)
+        self.set_size_request(360, 400)
+
+        self.toasts = Adw.ToastOverlay()
+        self.split = Adw.NavigationSplitView()
+        self.split.set_min_sidebar_width(220)
+        self.split.set_max_sidebar_width(260)
+        self.toasts.set_child(self.split)
+        self.set_content(self.toasts)
+
+        # Sidebar
+        self.list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
+        self.list.add_css_class("navigation-sidebar")
+        self.list.set_header_func(self.sidebar_header)
+        self.rows = {}
+        for page_id, title, icon, color, _cls, section in PAGES:
+            row = Gtk.ListBoxRow()
+            row.page_id = page_id
+            row.section = section
+            box = Gtk.Box(spacing=10, margin_top=4, margin_bottom=4, margin_start=4)
+            box.append(icon_box(icon, color))
+            box.append(Gtk.Label(label=title, xalign=0))
+            row.set_child(box)
+            self.list.append(row)
+            self.rows[page_id] = row
+        self.list.connect("row-selected", self.on_row)
+
+        sidebar_view = Adw.ToolbarView()
+        sidebar_header = Adw.HeaderBar()
+        sidebar_header.set_show_title(False)
+        sidebar_view.add_top_bar(sidebar_header)
+        scroller = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+        scroller.set_child(self.list)
+        sidebar_view.set_content(scroller)
+        self.split.set_sidebar(Adw.NavigationPage(title="Settings", child=sidebar_view))
+
+        # Content
+        self.content_view = Adw.ToolbarView()
+        self.content_header = Adw.HeaderBar()
+        self.content_view.add_top_bar(self.content_header)
+        self.content_page = Adw.NavigationPage(title="Settings", child=self.content_view)
+        self.split.set_content(self.content_page)
+
+        # Collapse to one column on narrow windows
+        bp = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 600sp"))
+        bp.add_setter(self.split, "collapsed", True)
+        self.add_breakpoint(bp)
+
+    @staticmethod
+    def sidebar_header(row, before):
+        if before is not None and before.section != row.section:
+            row.set_header(Gtk.Separator(margin_top=6, margin_bottom=6))
+        else:
+            row.set_header(None)
+
+    def on_row(self, listbox, row):
+        if row is not None:
+            self.build_page(row.page_id)
+            self.split.set_show_content(True)
+
+    def show_page(self, page_id):
+        row = self.rows.get(page_id) or self.rows["wifi"]
+        if self.list.get_selected_row() is row:
+            self.build_page(row.page_id)      # rebuild to show changes
+        else:
+            self.list.select_row(row)
+
+    def build_page(self, page_id):
+        for pid, title, _icon, _color, cls, _section in PAGES:
+            if pid == page_id:
+                try:
+                    page = cls()
+                except Exception as e:  # never let one broken page take down the app
+                    page = Adw.PreferencesPage()
+                    group = Adw.PreferencesGroup()
+                    group.add(Adw.ActionRow(title=f"This page couldn't load", subtitle=str(e)))
+                    page.add(group)
+                self.content_page.set_title(title)
+                self.content_view.set_content(page)
+                return
+
+
+class SettingsApp(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+        self.add_main_option("page", 0, GLib.OptionFlags.NONE, GLib.OptionArg.STRING,
+                             "Open a page: " + ", ".join(p[0] for p in PAGES), "PAGE")
+        self.window = None
+
+    def do_startup(self):
+        Adw.Application.do_startup(self)
+        provider = Gtk.CssProvider()
+        provider.load_from_string(CSS.decode())
+        Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider,
+                                                  Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        quit_action = Gio.SimpleAction.new("quit", None)
+        quit_action.connect("activate", lambda *_: self.quit())
+        self.add_action(quit_action)
+        self.set_accels_for_action("app.quit", ["<Control>q", "<Super>q"])
+
+    def do_command_line(self, command_line):
+        options = command_line.get_options_dict().end().unpack()
+        if self.window is None:
+            self.window = SettingsWindow(self)
+        self.window.show_page(options.get("page") or "wifi")
+        self.window.present()
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(SettingsApp().run(sys.argv))

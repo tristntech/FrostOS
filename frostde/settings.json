@@ -1,0 +1,20 @@
+{
+    "appearance": "light",
+    "accent": "#55AFFF",
+    "wallpaperLight": "/usr/share/backgrounds/frostos/frost-light.png",
+    "wallpaperDark": "/usr/share/backgrounds/frostos/frost-dark.png",
+    "dockSize": 52,
+    "dockMagnification": true,
+    "dockMagnifiedSize": 84,
+    "dockAutohide": false,
+    "pinnedApps": [
+        "org.gnome.Nautilus",
+        "brave-browser",
+        "org.gnome.Ptyxis",
+        "org.gnome.Software",
+        "org.frostos.Settings"
+    ],
+    "clock24h": false,
+    "doNotDisturb": false,
+    "reduceMotion": false
+}

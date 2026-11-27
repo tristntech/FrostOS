@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Log out of FrostDE.
+mkdir -p "$HOME/.cache/frostde"
+touch "$HOME/.cache/frostde/user-exit"
+if command -v hyprshutdown >/dev/null 2>&1; then
+    exec hyprshutdown
+fi
+exec hyprctl dispatch 'hl.dsp.exit()'

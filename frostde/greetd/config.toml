@@ -1,0 +1,12 @@
+# Login manager. The live system logs "frost" straight into FrostDE.
+# After you log out, a simple text login appears.
+[terminal]
+vt = 1
+
+[default_session]
+command = "agreety --cmd frostde-session"
+user = "greeter"
+
+[initial_session]
+command = "frostde-session"
+user = "frost"

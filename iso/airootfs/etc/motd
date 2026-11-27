@@ -1,8 +1,9 @@
 
   Welcome to the FrostOS live system!
 
-  The desktop should start on its own. If you only see this text screen,
-  type:  sudo systemctl restart sddm
+  The desktop (FrostDE) should start on its own. If you only see this text:
+    log in as  frost  (no password), then type:  frostde-session
+  Logs: ~/.cache/frostde/
 
   Help: https://github.com/tristntech/FrostOS
 

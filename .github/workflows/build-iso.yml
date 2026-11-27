@@ -8,7 +8,36 @@ on:
   workflow_dispatch: # adds a "Run workflow" button in the Actions tab
 
 jobs:
+  test:
+    name: Test FrostDE (screenshots)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Get the FrostOS code
+        uses: actions/checkout@v4
+
+      - name: Run FrostDE on a headless screen
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/build:ro" \
+            -v "$RUNNER_TEMP/out:/out" \
+            -e OUT_DIR=/out \
+            archlinux:latest \
+            bash /build/scripts/test-frostde.sh
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frostde-screenshots
+          path: ${{ runner.temp }}/out/screenshots/
+          retention-days: 14
+          if-no-files-found: ignore
+
   build:
+    name: Build the ISO
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 150
 

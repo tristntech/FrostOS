@@ -1,4 +1,5 @@
 # AUR packages that scripts/build-aur.sh builds and puts in the ISO.
 # One per line. Only add packages you trust: AUR packages are not checked by Arch.
 
-brave-bin   # official Brave browser package, maintained by Brave Software
+brave-bin             # official Brave browser package, maintained by Brave Software
+whitesur-icon-theme   # macOS-style icon theme (GPL-3.0), by vinceliuice

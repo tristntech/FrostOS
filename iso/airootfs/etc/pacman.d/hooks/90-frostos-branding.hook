@@ -6,10 +6,9 @@ Operation = Install
 Operation = Upgrade
 Operation = Remove
 Target = usr/lib/os-release
-Target = usr/share/applications/org.kde.dolphin.desktop
-Target = usr/share/applications/org.kde.konsole.desktop
-Target = usr/share/applications/systemsettings.desktop
-Target = usr/share/applications/org.kde.discover.desktop
+Target = usr/share/applications/org.gnome.Nautilus.desktop
+Target = usr/share/applications/org.gnome.Ptyxis.desktop
+Target = usr/share/applications/org.gnome.Software.desktop
 
 [Action]
 Description = Applying FrostOS branding...

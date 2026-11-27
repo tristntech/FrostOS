@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Starts FrostDE: sets up your settings on first login, then starts Hyprland,
+# which starts the FrostDE shell.
+#
+# If the desktop stops within a few seconds, it is started again once with
+# software rendering (no 3D graphics needed). That helps in virtual machines.
+# Logs: ~/.cache/frostde/
+
+SHARE=/usr/share/frostde
+CACHE="$HOME/.cache/frostde"
+CONF="$HOME/.config"
+mkdir -p "$CACHE" "$CONF/frostde" "$CONF/hypr" "$CONF/gtk-4.0" "$CONF/gtk-3.0"
+LOG="$CACHE/session.log"
+EXIT_MARKER="$CACHE/user-exit"        # written by frostde-logout
+
+# ---- first login: copy the default settings (never overwrites yours) ----
+seed() { [[ -e "$2" ]] || cp "$1" "$2"; }
+seed "$SHARE/settings.json"   "$CONF/frostde/settings.json"
+seed "$SHARE/gtk/gtk4.css"    "$CONF/gtk-4.0/gtk.css"
+seed "$SHARE/gtk/gtk3.css"    "$CONF/gtk-3.0/gtk.css"
+if [[ ! -e "$CONF/hypr/hyprland.lua" ]]; then
+    cat > "$CONF/hypr/hyprland.lua" <<'EOF'
+-- Hyprland starts here. FrostDE's settings live in /usr/share/frostde/hyprland.lua.
+-- Put your own changes in ~/.config/frostde/hyprland-user.lua instead of this file.
+dofile("/usr/share/frostde/hyprland.lua")
+EOF
+fi
+command -v xdg-user-dirs-update >/dev/null && xdg-user-dirs-update
+
+# ---- environment ----
+export XDG_SESSION_TYPE=wayland
+export XDG_SESSION_DESKTOP=FrostDE
+export GTK_USE_PORTAL=1
+if [[ -d /usr/share/icons/WhiteSur ]]; then
+    export QS_ICON_THEME=WhiteSur
+else
+    export QS_ICON_THEME=Adwaita
+fi
+
+virt="$(systemd-detect-virt 2>/dev/null || true)"
+if [[ -n "$virt" && "$virt" != "none" ]]; then
+    export FROSTDE_VM=1
+fi
+
+use_software_rendering() {
+    export FROSTDE_SOFTWARE_RENDERING=1
+    export LIBGL_ALWAYS_SOFTWARE=1
+    export GALLIUM_DRIVER=llvmpipe
+}
+[[ -e "$CACHE/use-software-rendering" ]] && use_software_rendering
+
+run_desktop() {
+    rm -f "$EXIT_MARKER"
+    local start=$SECONDS
+    if command -v start-hyprland >/dev/null 2>&1; then
+        start-hyprland >"$LOG" 2>&1
+    else
+        Hyprland >"$LOG" 2>&1
+    fi
+    last_status=$?
+    last_runtime=$((SECONDS - start))
+    local hlog
+    hlog="$(ls -t "${XDG_RUNTIME_DIR:-/run/user/$UID}"/hypr/*/hyprland.log 2>/dev/null | head -n 1)"
+    [[ -n "$hlog" ]] && cp -f "$hlog" "$CACHE/hyprland.log"
+}
+
+run_desktop
+
+# Stopped right away (and you didn't log out)? Try once more without 3D.
+if [[ ! -e "$EXIT_MARKER" && $last_runtime -lt 30 && -z "${FROSTDE_SOFTWARE_RENDERING:-}" ]]; then
+    cp -f "$LOG" "$CACHE/session-first-try.log"
+    use_software_rendering
+    run_desktop
+    if [[ -e "$EXIT_MARKER" || $last_runtime -ge 30 ]]; then
+        touch "$CACHE/use-software-rendering"
+    fi
+fi
+
+if [[ ! -e "$EXIT_MARKER" ]]; then
+    {
+        echo "FrostDE stopped unexpectedly (code $last_status, after ${last_runtime}s)."
+        echo "Logs are in $CACHE/"
+    } >> "$CACHE/errors.txt"
+fi

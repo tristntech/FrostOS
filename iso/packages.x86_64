@@ -1,55 +1,73 @@
 # Packages FrostOS adds on top of Arch's releng package list (the official Arch ISO).
 # One package per line. Lines starting with # are comments.
-# Packages marked (AUR) are built by scripts/build-aur.sh; see aur-packages.txt.
+# AUR packages (see aur-packages.txt) are built during the ISO build.
 
-# --- Desktop: KDE Plasma 6 on Wayland ---
-plasma-desktop
-kscreen
-plasma-nm
-plasma-pa
-bluedevil
-powerdevil
-power-profiles-daemon
-kinfocenter
-kde-gtk-config
-breeze-gtk
-xdg-desktop-portal-kde
-polkit-kde-agent
-appmenu-gtk-module
-ocean-sound-theme
-sddm
-sddm-kcm
+# --- FrostDE: Hyprland draws the windows, Quickshell runs the FrostDE shell ---
+hyprland
+xdg-desktop-portal-hyprland
+xdg-desktop-portal-gtk
+hyprpolkitagent
+hyprlock
+quickshell
+qt6-wayland
+qt6-svg
+qt6-imageformats
+greetd
+greetd-agreety
 
-# --- Frost apps (KDE apps with FrostOS names and themes) ---
-dolphin
-konsole
-discover
-packagekit-qt6
+# --- Frost Settings (Python + GTK 4 + libadwaita) ---
+python
+python-gobject
+gtk4
+libadwaita
+
+# --- Apps ---
+nautilus                  # Frost Files
+ptyxis                    # Frost Terminal
+gnome-software            # Frost Store
+packagekit
 flatpak
-flatpak-kcm
 archlinux-appstream-data
-
-# --- Browser ---
+gnome-text-editor
+gnome-calculator
+gnome-clocks
+gnome-system-monitor
+loupe
+showtime
+papers
+file-roller
+gvfs
 brave-bin                 # (AUR) official Brave package, maintained by Brave
 
-# --- Utilities ---
-kate                      # also provides KWrite, the simple text editor
-ark
-7zip
-unzip
-gwenview
-haruna
-kcalc
-kclock
-spectacle
-plasma-systemmonitor
-ffmpegthumbs
-kdegraphics-thumbnailers
-kio-extras
+# --- Look ---
+adw-gtk-theme
+adwaita-icon-theme
+whitesur-icon-theme       # (AUR) macOS-style icons
+inter-font
+noto-fonts
+noto-fonts-emoji
+ttf-jetbrains-mono
+ttf-nerd-fonts-symbols
 
-# --- Security ---
-plasma-firewall
+# --- Desktop services and tools ---
+gnome-keyring
+libsecret
+dconf
+xdg-user-dirs
+xdg-utils
+grim
+slurp
+wl-clipboard
+libnotify
+brightnessctl
+playerctl
+pciutils
+pacman-contrib
+upower
+power-profiles-daemon
 ufw
+polkit
+sudo
 
 # --- Sound ---
 pipewire
@@ -57,6 +75,7 @@ pipewire-alsa
 pipewire-pulse
 pipewire-jack
 wireplumber
+libpulse
 
 # --- Network & Bluetooth ---
 networkmanager
@@ -65,15 +84,3 @@ bluez-utils
 
 # --- Graphics (includes software rendering for virtual machines) ---
 mesa
-qt6-multimedia-ffmpeg
-
-# --- Fonts ---
-inter-font
-noto-fonts
-noto-fonts-emoji
-ttf-jetbrains-mono
-
-# --- System ---
-sudo
-polkit
-xdg-user-dirs

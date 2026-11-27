@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=FrostDE
+Comment=The FrostOS desktop
+Exec=frostde-session
+DesktopNames=FrostDE;Hyprland

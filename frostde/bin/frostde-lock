@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Lock the screen. Uses ~/.config/hypr/hyprlock.conf if you made one,
+# otherwise the FrostDE lock screen.
+pgrep -x hyprlock >/dev/null && exit 0
+if [[ -e "$HOME/.config/hypr/hyprlock.conf" ]]; then
+    exec hyprlock
+fi
+exec hyprlock --config /usr/share/frostde/hyprlock.conf

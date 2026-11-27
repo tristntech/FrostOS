@@ -12,4 +12,10 @@ file_permissions+=(
   ["/etc/gshadow"]="0:0:400"
   ["/etc/sudoers.d/10-frostos-live"]="0:0:440"
   ["/usr/share/frostos/frostos-branding"]="0:0:755"
+  ["/usr/bin/frostde-session"]="0:0:755"
+  ["/usr/bin/frostde-lock"]="0:0:755"
+  ["/usr/bin/frostde-logout"]="0:0:755"
+  ["/usr/bin/frostde-screenshot"]="0:0:755"
+  ["/usr/bin/frostde-welcome"]="0:0:755"
+  ["/usr/bin/frost-settings"]="0:0:755"
 )

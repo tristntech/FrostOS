@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Frost Settings
+GenericName=System Settings
+Comment=Change Wi-Fi, Bluetooth, sound, displays, appearance and more
+Exec=frost-settings
+Icon=preferences-system
+Categories=Settings;System;GTK;
+Keywords=settings;preferences;wifi;bluetooth;sound;display;wallpaper;dock;
+StartupNotify=true
